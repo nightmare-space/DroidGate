@@ -8,6 +8,7 @@ import android.app.ActivityManagerNative;
 import android.app.ActivityTaskManager;
 import android.app.IActivityManager;
 import android.app.IActivityTaskManager;
+import android.app.IAppTask;
 import android.app.TaskInfo;
 import android.content.ComponentName;
 import android.content.Context;
@@ -18,23 +19,20 @@ import android.graphics.Bitmap;
 import android.graphics.ColorSpace;
 import android.graphics.GraphicBuffer;
 import android.graphics.PixelFormat;
-import android.graphics.Rect;
 import android.hardware.HardwareBuffer;
-import android.os.BatteryManager;
+import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.util.Log;
-import android.util.LogPrinter;
-import android.util.Printer;
+import android.window.IWindowOrganizerController;
 import android.window.TaskSnapshot;
+import android.window.WindowContainerToken;
+import android.window.WindowContainerTransaction;
 
-import com.nightmare.aas.ContextStore;
 import com.nightmare.aas.foundation.AndroidAPIPlugin;
 import com.nightmare.aas.helper.L;
 import com.nightmare.aas.helper.RH;
-import com.nightmare.aas.helper.ReflectionHelper;
 import com.nightmare.aas.helper.ReflectionPrinter;
 import com.nightmare.aas_plugins.helper.AndroidVersions;
 
@@ -44,7 +42,7 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.List;
 
 import fi.iki.elonen.NanoHTTPD;
@@ -396,15 +394,24 @@ public class ActivityTaskManagerPlugin extends AndroidAPIPlugin {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        L.d("recentTaskInfos len -> " + recentTaskInfos.size());
         JSONObject jsonObjectResult = new JSONObject();
         JSONArray jsonArray = new JSONArray();
         try {
             for (ActivityManager.RecentTaskInfo taskInfo : recentTaskInfos) {
                 JSONObject jsonObject = new JSONObject();
+
                 jsonObject.put("id", taskInfo.id);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     int taskId = taskInfo.taskId;
                     jsonObject.put("taskId", taskId);
+                }
+                try {
+                    // token
+                    WindowContainerToken token = RH.gF(TaskInfo.class, taskInfo, "token");
+                    jsonObject.put("token", token.toString());
+                } catch (Exception e) {
+                    L.d("token get error -> " + e);
                 }
                 try {
                     int stackId = RH.gF(taskInfo, "stackId");
