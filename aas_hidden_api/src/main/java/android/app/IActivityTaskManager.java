@@ -7,6 +7,9 @@ import android.os.IBinder;
 import android.os.IInterface;
 import android.os.RemoteException;
 import android.window.TaskSnapshot;
+import android.window.IWindowOrganizerController;
+
+import java.util.List;
 
 public interface IActivityTaskManager extends IInterface {
     TaskSnapshot getTaskSnapshot(int taskId, boolean isLowResolution) throws RemoteException;
@@ -17,6 +20,13 @@ public interface IActivityTaskManager extends IInterface {
     TaskSnapshot getTaskSnapshot(int taskId, boolean isLowResolution, boolean takeSnapshotIfNeeded) throws RemoteException;
 
     ParceledListSlice<ActivityManager.RecentTaskInfo> getRecentTasks(int maxNum, int flags, int userId) throws RemoteException;
+
+    /**
+     * Returns an interface enabling the management of window organizers.
+     */
+    IWindowOrganizerController getWindowOrganizerController();
+
+    List<IBinder> getAppTasks(String callingPackage) throws RemoteException;
 
     TaskSnapshot takeTaskSnapshot(int taskId) throws RemoteException;
 
