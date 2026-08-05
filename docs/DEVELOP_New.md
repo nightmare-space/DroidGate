@@ -1,82 +1,74 @@
-## 整体架构图
-![](applib.excalidraw.png)
-基于 HTTP 服务设计的好处是，无论客户端代码运行在哪种设备，对它来说，不一样的只有端口号
+## 整体架构
 
-甚至可以给予这种模式开发出一个全平台的 LibChecker，在 PC 端也能快速查看 Android 的设备信息
+DroidGate 是运行在 Android 设备上的系统能力网关。客户端只需要知道地址、端口和鉴权 key，不需要感知服务运行在哪种模式。
+
+```text
+Flutter / Web / Desktop / HTTP Client
+                    |
+                    | HTTP
+                    v
+                DroidGate
+                    |
+                    | plugin.route() 分发
+                    v
+Android Framework / Binder / Hidden APIs / Native
+```
 
 ## 两种启动模式
-Applib 有两种启动模式
-第一种是速享等软件需要选择本机应用进行发送的时候，也会用到读取本机应用列表的功能
 
-这部分是速享等软件集成了 app_channel 插件即可自动拥有获取应用列表的能力，无需手动启动服务
+### Embedded Mode
 
-启动代码如下:
+宿主 Android 应用提供真实 `Context`，DroidGate 使用 `14000–14039` 中的可用端口启动：
 
 ```java
-@Override
-public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
-    channel = new MethodChannel(flutterPluginBinding.getBinaryMessenger(), "apputils");
-    try {
-        AppServer.startServerFromActivity(flutterPluginBinding.getApplicationContext());
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-    channel.setMethodCallHandler(this);
-}
+int port = DroidGate.startServerFromActivity(context);
 ```
 
-还有一个是从 adb 的 shell 中启动
-这里需要明确一些上下文, java 代码可编译成 class 文件，再通过 dx 工具转换成 dex 文件
+该模式受宿主应用权限约束。
 
-通过安卓上的 app_process 可以直接运行
+### Shell Mode
 
-代码
+手工构建脚本会生成 `scripts/build/droidgate-server`，随后可以通过 `app_process` 以 shell UID 运行：
 
 ```sh
-app_process -Djava.class.path=/sdcard/app_serve /system/bin --nice-name=com.nightmare.dex com.nightmare.applib.AppServer open
+app_process \
+  -Djava.library.path=/data/local/tmp \
+  -Djava.class.path=/data/local/tmp/droidgate-server \
+  /system/bin \
+  --nice-name=droidgate \
+  com.nightmare.droidgate.DroidGate shell
 ```
 
-这种就和 scrcpy 的情况完全一样，需要模拟构造 Context, 和反射一系列的类才能调用系统 api
+Shell Mode 使用 `15000–15039` 中的可用端口，并通过 `FakeContext` 和兼容层访问系统服务。
 
 ## 调试
-在 applib 根目录直接运行 `scripts/auto.sh` 即可
 
-不过需要改一些简单的配置，当脚本可以正常运行
+连接设备后运行：
 
-其中包含了一行命令
-
-adb forward tcp:15000 tcp:15000
-
-所以，接下来用 postman 调用15000端口的api即可
-
-`curl --location 'http://127.0.0.1:15000/tasks'`
-
-`curl --location --request POST 'http://127.0.0.1:15000/createVirtualDisplay?width=1200&height=2412&density=480'`
-
-这部分需要简单阅读一下 AppServer.java ,其中图标的获取也是通过接口，
-
-Flutter 侧 直接用 Image.network 加载图标
-
-```dart
-Image.network(
-  'http://127.0.0.1:${channel.port}/icon/${packageName}',
-  gaplessPlayback: true,
-  errorBuilder: (_, __, ___) {
-    return Image.asset(
-      '${Config.flutterPackage}assets/placeholder.png',
-      gaplessPlayback: true,
-    );
-  },
-),
+```sh
+scripts/build_and_run.sh
 ```
 
-整个设计的好处是，无论是哪种启动方式，对Flutter来说，不一样的只有端口号
+端口转发：
 
-所以需要调试图标丢失问题，需要先看下应用列表能不能正常获取
+```sh
+adb forward tcp:15000 tcp:15000
+```
 
-猜测是没有获取到应用包名，导致后续获取不到图标的
+健康检查：
 
+```sh
+curl 'http://127.0.0.1:15000/check'
+```
 
+接口调用示例：
+
+```sh
+curl 'http://127.0.0.1:15000/activity_task_manager?action=get_tasks&key=droidgate'
+```
+
+实际服务可能选择 `15000–15039` 中的其他端口，最终端口会写入设备端的 `server_port` 文件。
 
 ## 相关资料
-[app_process使用](https://ljd1996.github.io/2019/11/11/app-process%E4%BD%BF%E7%94%A8/)
+
+[app_process 使用](https://ljd1996.github.io/2019/11/11/app-process%E4%BD%BF%E7%94%A8/)
