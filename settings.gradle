@@ -1,5 +1,6 @@
-include ':aas'
-include ':aas_plugins'
-include ':aas_hidden_api'
-include ':aas_integrated'
+rootProject.name = 'DroidGate'
 
+include ':droidgate-core'
+include ':droidgate-plugins'
+include ':droidgate-hidden-api'
+include ':droidgate-bundle'
