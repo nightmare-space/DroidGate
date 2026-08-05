@@ -12,14 +12,15 @@ function color_echo()
 {
     echo -e "\033[1;32m$1\033[0m"
 }
-JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
+JAVA_HOME="/Library/Java/JavaVirtualMachines/openjdk-17.jdk/Contents/Home"
+JAVAC="$JAVA_HOME/bin/javac"
 set -e
 LOCAL_DIR=$(cd `dirname $0`; pwd)
 PROJ_DIR=$(cd $LOCAL_DIR/..; pwd)
 unset ANDROID_PLATFORM
 unset ANDROID_BUILD_TOOLS
 PLATFORM=${ANDROID_PLATFORM:-35}
-BUILD_TOOLS=${ANDROID_BUILD_TOOLS:-35.0.1}
+BUILD_TOOLS=${ANDROID_BUILD_TOOLS:-36.1.0}
 BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
 # BUILD_DIR="$(realpath ${BUILD_DIR:-build})"
 BUILD_DIR="$LOCAL_DIR/${BUILD_DIR:-build}"
@@ -98,7 +99,7 @@ color_echo "Compiling java sources..."
 
 JAR_PATH=$PROJ_DIR/aas/libs
 
-/usr/bin/javac -encoding UTF-8 -bootclasspath "$ANDROID_JAR" \
+"$JAVAC" -encoding UTF-8 -bootclasspath "$ANDROID_JAR" \
     -Djava.ext.dirs=$JAR_PATH \
     -cp "$LAMBDA_JAR:$GEN_DIR:$PROJ_DIR/aas/libs/nanohttpd-2.3.1.jar" \
     -d "$CLASSES_DIR" \
