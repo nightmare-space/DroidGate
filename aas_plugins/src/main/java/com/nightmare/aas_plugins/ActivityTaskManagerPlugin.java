@@ -400,11 +400,11 @@ public class ActivityTaskManagerPlugin extends AndroidAPIPlugin {
         try {
             for (ActivityManager.RecentTaskInfo taskInfo : recentTaskInfos) {
                 JSONObject jsonObject = new JSONObject();
-
                 jsonObject.put("id", taskInfo.id);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     int taskId = taskInfo.taskId;
                     jsonObject.put("taskId", taskId);
+                    jsonObject.put("userId", RH.gF(TaskInfo.class, taskInfo, "userId"));
                 }
                 try {
                     // token
