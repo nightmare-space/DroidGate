@@ -13,12 +13,12 @@ start_emulator() {
   echo "Emulator is ready."
 }
 
-start_aas() {
+start_droidgate() {
   $LOCAL_DIR/build_and_run.sh &
   curl --request GET \
-  --url 'http://127.0.0.1:15000/activity_task_manager?action=get_tasks&key=aas'
+  --url 'http://127.0.0.1:15000/activity_task_manager?action=get_tasks&key=droidgate'
 }
 
 
 start_emulator
-start_aas
+start_droidgate

@@ -26,8 +26,8 @@ BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$BUILD_TOOLS"
 BUILD_DIR="$LOCAL_DIR/${BUILD_DIR:-build}"
 GEN_DIR="$BUILD_DIR/gen"
 CLASSES_DIR="$BUILD_DIR/classes"
-SERVER_DIR=$PROJ_DIR/aas_hidden_api
-SERVER_BINARY=app_server
+HIDDEN_API_MODULE=$PROJ_DIR/droidgate-hidden-api
+SERVER_BINARY=droidgate-server
 ANDROID_JAR="$ANDROID_HOME/platforms/android-$PLATFORM/android.jar"
 LAMBDA_JAR="$BUILD_TOOLS_DIR/core-lambda-stubs.jar"
 printf "%-20s %-20s\n" "Variable" "Value"
@@ -45,27 +45,27 @@ printf "%-20s %-20s\n" "GEN_DIR" "$GEN_DIR"
 
 # rm -rf "$CLASSES_DIR" "$BUILD_DIR/$SERVER_BINARY" classes.dex
 
-mkdir -p "$CLASSES_DIR/com/nightmare/aas"
+mkdir -p "$CLASSES_DIR/com/nightmare/droidgate"
 
 color_echo "Generating java from aidl..."
-cd "$SERVER_DIR/src/main/aidl"
+cd "$HIDDEN_API_MODULE/src/main/aidl"
 # "$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I. android/app/ITaskStackListener.aidl
 "$BUILD_TOOLS_DIR/aidl" -o"$GEN_DIR" -I. android/view/IRotationWatcher.aidl
 
 # cd $PROJ_DIR/src/main/java
-AAS_INTEGRATE_DIR=$PROJ_DIR/aas_integrated
-AAS_INTEGRATE_SRC_DIR=$AAS_INTEGRATE_DIR/src/main/java
-HIDDEN_API_DIR=$PROJ_DIR/aas_hidden_api/src/main/java
-AAS_SRC_DIR=$PROJ_DIR/aas/src/main/java
-ASS_PLUGINS_SRC_DIR=$PROJ_DIR/aas_plugins/src/main/java
+DROIDGATE_BUNDLE_DIR=$PROJ_DIR/droidgate-bundle
+DROIDGATE_BUNDLE_SRC_DIR=$DROIDGATE_BUNDLE_DIR/src/main/java
+HIDDEN_API_DIR=$HIDDEN_API_MODULE/src/main/java
+DROIDGATE_CORE_SRC_DIR=$PROJ_DIR/droidgate-core/src/main/java
+DROIDGATE_PLUGINS_SRC_DIR=$PROJ_DIR/droidgate-plugins/src/main/java
 
 SRC=( \
-    $AAS_SRC_DIR/com/nightmare/aas/*.java \
-    $AAS_SRC_DIR/com/nightmare/aas/foundation/*.java \
-    $AAS_SRC_DIR/com/nightmare/aas/helper/*.java \
-    $ASS_PLUGINS_SRC_DIR/com/nightmare/aas_plugins/*.java \
-    $ASS_PLUGINS_SRC_DIR/com/nightmare/aas_plugins/helper/*.java \
-    $AAS_INTEGRATE_SRC_DIR/com/nightmare/aas_integrated/*.java \
+    $DROIDGATE_CORE_SRC_DIR/com/nightmare/droidgate/*.java \
+    $DROIDGATE_CORE_SRC_DIR/com/nightmare/droidgate/foundation/*.java \
+    $DROIDGATE_CORE_SRC_DIR/com/nightmare/droidgate/helper/*.java \
+    $DROIDGATE_PLUGINS_SRC_DIR/com/nightmare/droidgate/plugins/*.java \
+    $DROIDGATE_PLUGINS_SRC_DIR/com/nightmare/droidgate/plugins/helper/*.java \
+    $DROIDGATE_BUNDLE_SRC_DIR/com/nightmare/droidgate/*.java \
 )
 
 HIDDEN=( \
@@ -81,27 +81,13 @@ HIDDEN=( \
     $HIDDEN_API_DIR/com/android/internal/os/*.java \
 )
 
-CLASSES=()
-for src in "${SRC[@]}"
-do
-    # 删除 src 中 com/nightmare/aas 前面的部分
-    src=$(echo $src | sed 's|.*\(com/nightmare/.*\)|\1|')
-    CLASSES+=("${src%.java}.class")
-done
-CLASSES+=("com/nightmare/aas_plugins/ActivityTaskManagerPlugin\$1.class")
-CLASSES+=("com/nightmare/aas_plugins/ActivityTaskManagerPlugin\$2.class")
-CLASSES+=("com/nightmare/aas_plugins/InputManagerPlugin\$1.class")
-CLASSES+=("com/nightmare/aas_plugins/InputManagerPlugin\$2.class")
-CLASSES+=("com/nightmare/aas_plugins/InputManagerPlugin\$3.class")
-CLASSES+=("com/nightmare/aas_plugins/MouseEventParser\$MouseEvent.class")
-
 color_echo "Compiling java sources..."
 
-JAR_PATH=$PROJ_DIR/aas/libs
+JAR_PATH=$PROJ_DIR/droidgate-core/libs
 
 "$JAVAC" -encoding UTF-8 -bootclasspath "$ANDROID_JAR" \
     -Djava.ext.dirs=$JAR_PATH \
-    -cp "$LAMBDA_JAR:$GEN_DIR:$PROJ_DIR/aas/libs/nanohttpd-2.3.1.jar" \
+    -cp "$LAMBDA_JAR:$GEN_DIR:$JAR_PATH/nanohttpd-2.3.1.jar" \
     -d "$CLASSES_DIR" \
     -source 1.8 -target 1.8 \
     ${HIDDEN[@]} \
@@ -111,12 +97,20 @@ cp -r $PROJ_DIR/fi $CLASSES_DIR/
 color_echo "Dexing..."
 cd "$CLASSES_DIR"
 
+CLASSES=(
+    com/nightmare/droidgate/*.class
+    com/nightmare/droidgate/foundation/*.class
+    com/nightmare/droidgate/helper/*.class
+    com/nightmare/droidgate/plugins/*.class
+    com/nightmare/droidgate/plugins/helper/*.class
+)
+
 if [[ $PLATFORM -lt 31 ]]
 then
     # use dx
     color_echo "Dexing with dx..."
     "$BUILD_TOOLS_DIR/dx" --dex --output "$BUILD_DIR/classes.dex" \
-        ${CLASSES[@]} \
+        "${CLASSES[@]}" \
         android/content/pm/*.class \
         android/os/*.class \
         android/hardware/display/*.class \
@@ -138,7 +132,7 @@ else
     # use d8
     "$BUILD_TOOLS_DIR/d8" --classpath "$ANDROID_JAR" \
         --output "$BUILD_DIR/classes.zip" \
-        ${CLASSES[@]} \
+        "${CLASSES[@]}" \
         fi/iki/elonen/*.class \
         fi/iki/elonen/util/*.class
 
@@ -148,4 +142,4 @@ fi
 
 # rm -rf classes.dex classes gen
 
-echo "App Server generated in $BUILD_DIR/$SERVER_BINARY"
+echo "DroidGate server generated in $BUILD_DIR/$SERVER_BINARY"

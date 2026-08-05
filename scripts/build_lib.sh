@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# filepath: /Users/lori/Desktop/nightmare-space/android_api_server/aas/build.sh
+# Builds the DroidGate native library without Gradle.
 LOCAL_DIR=$(
     cd $(dirname $0)
     pwd
@@ -11,7 +11,7 @@ if [ -z "$NDK_PATH" ]; then
     echo "请设置 NDK_PATH 为 Android NDK 的路径"
     exit 1
 fi
-cd aas/src/main/cpp
+cd "$LOCAL_DIR/../droidgate-core/src/main/cpp"
 # 创建构建目录
 BUILD_DIR=build
 mkdir -p $BUILD_DIR
@@ -26,8 +26,8 @@ cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_PATH/build/cmake/android.toolchain.cmake \
 # 编译项目
 cmake --build .
 
-echo "编译完成，输出文件位于: $(pwd)/libaas.so"
-SO=$(pwd)/libaas.so
+echo "编译完成，输出文件位于: $(pwd)/libdroidgate.so"
+SO=$(pwd)/libdroidgate.so
 cd $LOCAL_DIR
 
-cp $SO build/libaas.so
+cp $SO build/libdroidgate.so
