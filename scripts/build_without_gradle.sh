@@ -81,6 +81,10 @@ HIDDEN=( \
     $HIDDEN_API_DIR/com/android/internal/os/*.java \
 )
 
+color_echo "Compiling native library..."
+
+"$LOCAL_DIR/build_lib.sh"
+
 color_echo "Compiling java sources..."
 
 JAR_PATH=$PROJ_DIR/droidgate-core/libs
@@ -139,6 +143,15 @@ else
     cd "$BUILD_DIR"
     mv classes.zip "$SERVER_BINARY"
 fi
+
+cd "$BUILD_DIR"
+
+if [ ! -f "libdroidgate.so" ]; then
+    echo "Missing libdroidgate.so"
+    exit 1
+fi
+
+"$JAVA_HOME/bin/jar" uf "$SERVER_BINARY" libdroidgate.so
 
 # rm -rf classes.dex classes gen
 

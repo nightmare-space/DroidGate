@@ -63,7 +63,6 @@ devices=`adb devices | grep -v List | grep device | wc -l`
 echo devices:$devices
 adb shell 'rm -rf /data/local/tmp/droidgate-server*'
 adb push "build/droidgate-server" /data/local/tmp/droidgate-server$MD5
-adb push "build/libdroidgate.so" /data/local/tmp/libdroidgate.so
 $LOCAL_DIR/forward_port.sh
 TARGET_SERVER_PATH=/data/local/tmp/droidgate-server$MD5
 echo TARGET_SERVER_PATH:$TARGET_SERVER_PATH
@@ -71,8 +70,8 @@ echo TARGET_SERVER_PATH:$TARGET_SERVER_PATH
 # adb shell app_process -Djava.library.path=/data/local/tmp/ -Djava.class.path=$TARGET_SERVER_PATH /system/bin --nice-name=com.nightmare.droidgate com.nightmare.droidgate.DroidGate .
 CMD="app_process -Djava.library.path=/data/local/tmp/ -Djava.class.path=$TARGET_SERVER_PATH /system/bin --nice-name=droidgate com.nightmare.droidgate.DroidGate ."
 echo CMD: $CMD
-# adb shell su -c "$CMD"
-adb shell "$CMD"
+adb shell su -c "$CMD"
+# adb shell "$CMD"
 # app_process -Djava.class.path=/data/app/~~IUxvJryjtXzdl9oNx4Y4lw==/com.nightmare.sula-Dgfc-gIAFHr5s17sRvIVXg==/base.apk /system/bin --nice-name=com.nightmare.droidgate com.nightmare.droidgate.DroidGate sula
 
 

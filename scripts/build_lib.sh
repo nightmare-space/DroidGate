@@ -1,33 +1,24 @@
 #!/bin/bash
+set -euo pipefail
 
-# Builds the DroidGate native library without Gradle.
 LOCAL_DIR=$(
-    cd $(dirname $0)
+    cd "$(dirname "$0")"
     pwd
 )
-# 设置 Android NDK 路径
-NDK_PATH=/Volumes/Mac/Android/sdk/ndk/26.3.11579264
-if [ -z "$NDK_PATH" ]; then
-    echo "请设置 NDK_PATH 为 Android NDK 的路径"
-    exit 1
-fi
-cd "$LOCAL_DIR/../droidgate-core/src/main/cpp"
-# 创建构建目录
-BUILD_DIR=build
-mkdir -p $BUILD_DIR
-cd $BUILD_DIR
 
-# 配置 CMake
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK_PATH/build/cmake/android.toolchain.cmake \
+NDK_PATH="${ANDROID_NDK:-${ANDROID_HOME}/ndk/27.3.13750724}"
+CPP_DIR="$LOCAL_DIR/../droidgate-core/src/main/cpp"
+NATIVE_BUILD_DIR="$CPP_DIR/build"
+
+cmake \
+    -S "$CPP_DIR" \
+    -B "$NATIVE_BUILD_DIR" \
+    -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a \
-    -DANDROID_PLATFORM=android-21 \
-    ..
+    -DANDROID_PLATFORM=android-21
 
-# 编译项目
-cmake --build .
+cmake --build "$NATIVE_BUILD_DIR"
 
-echo "编译完成，输出文件位于: $(pwd)/libdroidgate.so"
-SO=$(pwd)/libdroidgate.so
-cd $LOCAL_DIR
-
-cp $SO build/libdroidgate.so
+mkdir -p "$LOCAL_DIR/build"
+cp "$NATIVE_BUILD_DIR/libdroidgate.so" "$LOCAL_DIR/build/libdroidgate.so"

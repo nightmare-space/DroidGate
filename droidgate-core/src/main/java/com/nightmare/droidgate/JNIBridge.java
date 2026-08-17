@@ -2,12 +2,125 @@ package com.nightmare.droidgate;
 
 import com.nightmare.droidgate.helper.L;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Random;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class JNIBridge {
     static {
-        //        L.d("" + System.getProperty("java.library.path"));
-        System.loadLibrary("droidgate");
+        // 测试方式一：直接操作 ZIP
+        loadLibraryFromZipArtifact();
+
+        // 测试方式二：通过 ClassLoader 读取资源
+        // loadLibraryFromClassPathResource();
+    }
+
+    /**
+     * 方式一：
+     * 根据 java.class.path 找到 droidgate-server，
+     * 手动使用 ZipFile 读取其中的 libdroidgate.so。
+     */
+    private static void loadLibraryFromZipArtifact() {
+        String classPath = System.getProperty("java.class.path");
+        if (classPath == null || classPath.isEmpty()) {
+            throw new UnsatisfiedLinkError("java.class.path is empty");
+        }
+
+        String libraryName = System.mapLibraryName("droidgate");
+        File output = new File(
+                "/data/local/tmp",
+                libraryName
+        );
+
+        try (ZipFile artifact = new ZipFile(classPath)) {
+            ZipEntry libraryEntry = artifact.getEntry(libraryName);
+            if (libraryEntry == null) {
+                throw new IOException(
+                        libraryName + " not found in " + classPath
+                );
+            }
+
+            try (InputStream input =
+                         artifact.getInputStream(libraryEntry)) {
+                copyToFile(input, output);
+            }
+
+            System.load(output.getAbsolutePath());
+        } catch (IOException exception) {
+            throw createLoadError(
+                    "Unable to extract library from " + classPath,
+                    exception
+            );
+        }
+    }
+
+    /**
+     * 方式二：
+     * 让加载 JNIBridge 的 ClassLoader 在 classpath 中寻找
+     * libdroidgate.so，并将其作为普通资源读取。
+     */
+    private static void loadLibraryFromClassPathResource() {
+        String libraryName = System.mapLibraryName("droidgate");
+        String resourceName = "/" + libraryName;
+
+        File output = new File(
+                "/data/local/tmp",
+                libraryName
+        );
+
+        try (InputStream input =
+                     JNIBridge.class.getResourceAsStream(resourceName)) {
+            if (input == null) {
+                throw new IOException(
+                        "Classpath resource not found: " + resourceName
+                );
+            }
+
+            copyToFile(input, output);
+            System.load(output.getAbsolutePath());
+        } catch (IOException exception) {
+            throw createLoadError(
+                    "Unable to extract classpath resource "
+                            + resourceName,
+                    exception
+            );
+        }
+    }
+
+    /**
+     * 两种加载方式公用的文件复制方法。
+     */
+    private static void copyToFile(
+            InputStream input,
+            File output
+    ) throws IOException {
+        try (FileOutputStream outputStream =
+                     new FileOutputStream(output)) {
+            byte[] buffer = new byte[8192];
+            int length;
+
+            while ((length = input.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, length);
+            }
+
+            outputStream.flush();
+        }
+    }
+
+    private static UnsatisfiedLinkError createLoadError(
+            String message,
+            Throwable cause
+    ) {
+        UnsatisfiedLinkError error =
+                new UnsatisfiedLinkError(
+                        message + ": " + cause.getMessage()
+                );
+        error.initCause(cause);
+        return error;
     }
 
     public static native long sumSquaresNative(int n);

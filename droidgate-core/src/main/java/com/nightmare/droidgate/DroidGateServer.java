@@ -4,8 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.ddm.DdmHandleAppName;
 import android.hardware.display.DisplayManager;
+import android.net.wifi.WifiManager;
+import android.os.Binder;
 import android.os.Build;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.view.Display;
 
 import com.nightmare.droidgate.foundation.DroidGatePlugin;
@@ -13,6 +16,7 @@ import com.nightmare.droidgate.foundation.FakeContext;
 import com.nightmare.droidgate.foundation.Workarounds;
 import com.nightmare.droidgate.helper.L;
 import com.nightmare.droidgate.helper.ReflectionHelper;
+import com.nightmare.droidgate.helper.ReflectionPrinter;
 import com.nightmare.droidgate.helper.ServerHelper;
 
 import java.io.FileOutputStream;
@@ -43,6 +47,11 @@ public class DroidGateServer {
 
     private static final String VERSION = "1.0.0";
 
+    private static final int SHELL_UID = 2000;
+
+
+
+    // TODO 我记得当时这个很重要，但是忘了是什么问题了
     public boolean switchToUid() {
         try {
             int currentUid = Process.myUid();
@@ -79,13 +88,18 @@ public class DroidGateServer {
         httpServer = ServerHelper.safeGetServerForShell();
         httpServer.setDroidGateServer(this);
         L.d("DroidGate server starting (version: " + VERSION + ")");
+        int uid = Process.myUid();
+        L.d("uid -> " + uid);
+        JNIBridge.setUid(SHELL_UID);
+        uid = Process.myUid();
+        L.d("after setUid: " + "uid -> " + uid);
         Workarounds.apply();
+        ContextStore.getInstance().setEmbededMode(false);
         ContextStore.getInstance().setContext(FakeContext.get());
         // 获取安卓版本
-        String sdk = Build.VERSION.SDK;
+        int sdk = Build.VERSION.SDK_INT;
         String release = Build.VERSION.RELEASE;
         L.d("Info: Android " + release + "(" + sdk + ")");
-        int uid = Process.myUid();
         L.d("info: uid -> " + uid);
         // 获取设备制造商，例如 "Samsung"
         String manufacturer = Build.MANUFACTURER;
@@ -98,19 +112,10 @@ public class DroidGateServer {
         //        JNIBridge.test();
         //        JNIBridge.test1();
         // switchToUid();
-
-        String[] ps = ContextStore.getContext().getPackageManager().getPackagesForUid(2000);
-        if (ps != null) {
-            for (String p : ps) {
-                L.d("2000 uid package -> " + p);
-            }
-        } else {
-            L.d("2000 uid package is null");
-        }
-
         String deviceInfo = "Info: " + manufacturer + "(" + model + ")";
         L.d(deviceInfo);
         writePort(portDirectory, httpServer.getListeningPort());
+        ReflectionPrinter.listAllObject(WifiManager.class);
         // 让进程等待,现在由调用方执行 Looper.loop();
         // 不能用 System.in.read()
         // System.in.read() 需要宿主进程由标准终端调用
@@ -134,6 +139,7 @@ public class DroidGateServer {
         L.serverLogPath = dataPath + "/droidgate_server_log";
         portDirectory = dataPath;
         String portPath = context.getFilesDir().getPath();
+        ContextStore.getInstance().setEmbededMode(true);
         ContextStore.getInstance().setContext(context);
         DroidGateHttpServer server = ServerHelper.safeGetServerForActivity();
         server.setDroidGateServer(this);

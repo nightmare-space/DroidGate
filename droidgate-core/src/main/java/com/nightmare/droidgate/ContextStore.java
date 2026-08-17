@@ -15,13 +15,22 @@ public class ContextStore {
     }
 
     private Context context;
+    private boolean embededMode;
 
     public void setContext(Context context) {
         this.context = context;
     }
 
+    public void setEmbededMode(boolean embededMode) {
+        this.embededMode = embededMode;
+    }
+
     static public Context getContext() {
         return INSTANCE.context;
+    }
+
+    static public boolean isEmbededMode() {
+        return INSTANCE.embededMode;
     }
 
 }
