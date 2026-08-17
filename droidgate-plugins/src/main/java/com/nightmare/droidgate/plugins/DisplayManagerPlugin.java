@@ -58,7 +58,6 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
     }
 
     public DisplayManagerPlugin() {
-        DisplayManagerGlobal dmg = DisplayManagerGlobal.getInstance();
         // dmg.noSuchMethod();
         // Test.noSuchMethod();
         // RH.l(dmg);;
@@ -242,7 +241,7 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
         // final int callingUid = Binder.getCallingUid();
         // L.d("callingUid -> " + callingUid);
         Context context = ContextStore.getContext();
-        if (context instanceof FakeContext) {
+        if (!ContextStore.isEmbededMode()) {
             try {
                 // noinspection JavaReflectionMemberAccess
                 displayManager = DisplayManager.class.getDeclaredConstructor(Context.class).newInstance(context);
@@ -404,12 +403,19 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
         // L.d("hdrSdrRatio -> " + hdrSdrRatio);
     }
 
-    ClassLoader serverClassLoader = getServerClassLoader();
+    ClassLoader serverClassLoader;
+
+    ClassLoader ensureServerClassLoader() {
+        if (serverClassLoader == null) {
+            serverClassLoader = getServerClassLoader();
+        }
+        return serverClassLoader;
+    }
 
     @SuppressLint("PrivateApi")
     Class<?> getDisplayManagerServiceFromFramework() {
         try {
-            Class<?> clazz = serverClassLoader.loadClass("com.android.server.display.DisplayManagerService");
+            Class<?> clazz = ensureServerClassLoader().loadClass("com.android.server.display.DisplayManagerService");
             RH.iM(Runtime.getRuntime(), "loadLibrary0", clazz, "android_servers");
             return clazz;
         } catch (Exception e) {
@@ -420,7 +426,7 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
     @SuppressLint("PrivateApi")
     Class<?> getDisplayControlFromFramework() {
         try {
-            Class<?> clazz = serverClassLoader.loadClass("com.android.server.display.DisplayControl");
+            Class<?> clazz = ensureServerClassLoader().loadClass("com.android.server.display.DisplayControl");
             try {
                 RH.iM(Runtime.getRuntime(), "loadLibrary0", clazz, "android_servers");
             } catch (Throwable ignored) {
@@ -469,14 +475,14 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
         //         Build.VERSION.SDK_INT, /*isNamespaceShared=*/true , /*classLoaderName=*/null);
         Class<?> dmsClass = null;
         try {
-            dmsClass = serverClassLoader.loadClass("com.android.server.display.DisplayManagerService");
+            dmsClass = ensureServerClassLoader().loadClass("com.android.server.display.DisplayManagerService");
         } catch (ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
         RH.iM(Runtime.getRuntime(), "loadLibrary0", dmsClass, "android_servers");
         Class<?> ldaClass = null;
         try {
-            ldaClass = serverClassLoader.loadClass("com.android.server.display.LocalDisplayAdapter");
+            ldaClass = ensureServerClassLoader().loadClass("com.android.server.display.LocalDisplayAdapter");
         } catch (ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
@@ -740,4 +746,3 @@ public class DisplayManagerPlugin extends DroidGatePlugin {
 
 
 }
-

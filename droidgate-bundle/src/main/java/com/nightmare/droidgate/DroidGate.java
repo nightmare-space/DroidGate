@@ -3,6 +3,7 @@ package com.nightmare.droidgate;
 import android.content.Context;
 import android.os.Looper;
 
+import com.nightmare.droidgate.foundation.DroidGatePlugin;
 import com.nightmare.droidgate.helper.L;
 import com.nightmare.droidgate.plugins.ActivityManagerPlugin;
 import com.nightmare.droidgate.plugins.ActivityTaskManagerPlugin;
@@ -23,6 +24,7 @@ import java.util.Arrays;
 public class DroidGate {
     private static final PrintStream CONSOLE_OUT = new PrintStream(new FileOutputStream(FileDescriptor.out));
     private static final PrintStream CONSOLE_ERR = new PrintStream(new FileOutputStream(FileDescriptor.err));
+
 
     public static void main(String... args) {
         int status = 0;
@@ -78,22 +80,34 @@ public class DroidGate {
         return port;
     }
 
-    private static void registerRoutes(DroidGateServer server) {
+    @FunctionalInterface
+    private interface PluginFactory {
+        DroidGatePlugin create();
+    }
+
+    private static void registerPlugin(
+            DroidGateServer server,
+            PluginFactory factory
+    ) {
         try {
-            server.registerPlugin(new ActivityManagerPlugin());
-            server.registerPlugin(new ActivityTaskManagerPlugin());
-            server.registerPlugin(new CodecPlugin());
-            server.registerPlugin(new DeviceInfoPlugin());
-            server.registerPlugin(new DisplayManagerPlugin());
-            server.registerPlugin(new FilePlugin());
-            server.registerPlugin(new InputManagerPlugin());
-            server.registerPlugin(new NotificationPlugin());
-            server.registerPlugin(new PackageManagerPlugin());
-            server.registerPlugin(new UserManagerPlugin());
-        } catch (NoClassDefFoundError e) {
-            // some android versions may not have these classes
-            // noinspection CallToPrintStackTrace
-            e.printStackTrace();
+            DroidGatePlugin plugin = factory.create();
+            server.registerPlugin(plugin);
+        } catch (LinkageError | RuntimeException error) {
+            L.e("Failed to register plugin: " + error);
+            error.printStackTrace();
         }
+    }
+
+    private static void registerRoutes(DroidGateServer server) {
+        registerPlugin(server, ActivityManagerPlugin::new);
+        registerPlugin(server, ActivityTaskManagerPlugin::new);
+        registerPlugin(server, CodecPlugin::new);
+        registerPlugin(server, DeviceInfoPlugin::new);
+        registerPlugin(server, DisplayManagerPlugin::new);
+        registerPlugin(server, FilePlugin::new);
+        registerPlugin(server, InputManagerPlugin::new);
+        registerPlugin(server, NotificationPlugin::new);
+        registerPlugin(server, PackageManagerPlugin::new);
+        registerPlugin(server, UserManagerPlugin::new);
     }
 }

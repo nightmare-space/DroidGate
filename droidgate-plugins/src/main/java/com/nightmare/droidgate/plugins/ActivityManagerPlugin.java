@@ -23,12 +23,21 @@ import fi.iki.elonen.NanoHTTPD;
 
 // 2025.12.06 on Android14 tested all passed.
 public class ActivityManagerPlugin extends DroidGatePlugin {
-    public ActivityManagerPlugin() {
-        IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
-        ams = IActivityManager.Stub.asInterface(binder);
-    }
+    private IActivityManager ams;
 
-    IActivityManager ams;
+    private void ensureActivityManager() {
+        if (ams != null) {
+            return;
+        }
+        IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
+        if (binder == null) {
+            throw new IllegalStateException("ActivityManager binder is unavailable");
+        }
+        ams = IActivityManager.Stub.asInterface(binder);
+        if (ams == null) {
+            throw new IllegalStateException("IActivityManager is unavailable");
+        }
+    }
 
     @Override
     public String route() {
@@ -37,6 +46,7 @@ public class ActivityManagerPlugin extends DroidGatePlugin {
 
     @Override
     public NanoHTTPD.Response handle(NanoHTTPD.IHTTPSession session) {
+        ensureActivityManager();
         String packageName = session.getParms().get("package");
         String action = session.getParms().get("action");
         assert action != null;
@@ -107,9 +117,8 @@ public class ActivityManagerPlugin extends DroidGatePlugin {
             options = launchOptions.toBundle();
         }
         try {
-            IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
-            IActivityManager activityManagerServices = IActivityManager.Stub.asInterface(binder);
-            activityManagerServices.startActivityAsUser(
+            ensureActivityManager();
+            ams.startActivityAsUser(
                     /* caller */null,
                     /* callingPackage */ FakeContext.PACKAGE_NAME,
                     /* intent */ launchIntent,

@@ -16,8 +16,17 @@ public class L {
     static public String serverLogPath = "/sdcard/droidgate_server_log";
     static String TAG = "applib";
     static public boolean enableTerminalLog = true;
-
     static public boolean enableAndroidLog = false;
+
+    public static void configureForEmbededMode() {
+        enableAndroidLog = true;
+        enableTerminalLog = false;
+    }
+
+    public static void configureForShellMode() {
+        enableAndroidLog = false;
+        enableTerminalLog = true;
+    }
 
     public static void d(Object object) {
         StringBuilder sb = new StringBuilder();

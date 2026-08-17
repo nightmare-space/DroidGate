@@ -53,13 +53,24 @@ import fi.iki.elonen.NanoHTTPD;
  */
 public class ActivityTaskManagerPlugin extends DroidGatePlugin {
     public ActivityTaskManagerPlugin() {
+    }
+
+    private void ensureActivityTaskManager() {
+        if (iATM != null && iAM != null) {
+            return;
+        }
         IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
         iATM = ActivityTaskManager.getService();
         iAM = ActivityManagerNative.asInterface(binder);
     }
 
+    public ITaskStackListener iTaskStackListener;
 
-    public ITaskStackListener iTaskStackListener = new ITaskStackListener.Stub() {
+    private void ensureTaskStackListener() {
+        if (iTaskStackListener != null) {
+            return;
+        }
+        iTaskStackListener = new ITaskStackListener.Stub() {
         @Override
         public void onTaskStackChanged() {
             L.d("onTaskStackChanged");
@@ -222,7 +233,8 @@ public class ActivityTaskManagerPlugin extends DroidGatePlugin {
         public IBinder asBinder() {
             return this;
         }
-    };
+        };
+    }
 
     IActivityTaskManager iATM;
     IActivityManager iAM;
@@ -262,8 +274,12 @@ public class ActivityTaskManagerPlugin extends DroidGatePlugin {
         String action = session.getParms().get("action");
         String id = session.getParms().get("id");
         L.d("id -> " + id);
-        assert action != null;
-        switch (action) {
+        if (action == null || action.isEmpty()) {
+            return errorResponse(NanoHTTPD.Response.Status.BAD_REQUEST, "missing_action", null);
+        }
+        try {
+            ensureActivityTaskManager();
+            switch (action) {
             case "get_tasks":
                 try {
                     return newFixedLengthResponse(
@@ -379,8 +395,25 @@ public class ActivityTaskManagerPlugin extends DroidGatePlugin {
                 }
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", result.toString());
 
+            }
+            return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", "{}");
+        } catch (Throwable throwable) {
+            return errorResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, "operation_failed", throwable);
         }
-        return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", "{}");
+    }
+
+    private NanoHTTPD.Response errorResponse(NanoHTTPD.Response.Status status, String error, Throwable throwable) {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("success", false);
+            json.put("error", error);
+            if (throwable != null) {
+                json.put("exception", throwable.getClass().getName());
+                json.put("detail", throwable.getMessage() == null ? JSONObject.NULL : throwable.getMessage());
+            }
+        } catch (JSONException ignored) {
+        }
+        return newFixedLengthResponse(status, "application/json", json.toString());
     }
 
     String getRecentTasks() {

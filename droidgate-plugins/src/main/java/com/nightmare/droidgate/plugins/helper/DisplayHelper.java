@@ -48,6 +48,7 @@ public class DisplayHelper {
         try {
             jsonObject.put("uniqueId", RH.iM(display, "getUniqueId"));
         } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+            jsonObject.put("uniqueId", "unknown");
             L.d("Cannot get uniqueId: " + e.getMessage());
         }
         jsonObject.put("name", display.getName());

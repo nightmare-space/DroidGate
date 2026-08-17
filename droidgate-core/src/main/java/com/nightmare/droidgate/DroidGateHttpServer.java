@@ -56,10 +56,20 @@ public class DroidGateHttpServer extends NanoHTTPD {
                 }
             }
             return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "route not found");
-        } catch (Exception e) {
+        } catch (Throwable throwable) {
             // noinspection CallToPrintStackTrace
-            e.printStackTrace();
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", e.toString());
+            // log error
+            Log.e("DroidGateHttpServer", "error in serve", throwable);
+            throwable.printStackTrace();
+            JSONObject jsonObject = new JSONObject();
+            try {
+                jsonObject.put("success", false);
+                jsonObject.put("error", "server_error");
+                jsonObject.put("exception", throwable.getClass().getName());
+                jsonObject.put("detail", throwable.getMessage() == null ? JSONObject.NULL : throwable.getMessage());
+            } catch (Exception ignored) {
+            }
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", jsonObject.toString());
         }
     }
 }
