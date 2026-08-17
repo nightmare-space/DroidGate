@@ -1,0 +1,37 @@
+name: droidgate_flutter_example
+description: "Demonstrates how to use the droidgate_flutter plugin."
+publish_to: "none"
+
+environment:
+  sdk: ^3.8.0
+dependencies:
+  flutter:
+    sdk: flutter
+
+  droidgate_flutter:
+    path: ../
+  dio: ^5.9.0
+  global_repository:
+    git: https://github.com/nightmare-space/global_repository
+  syntax_highlight: ^0.4.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+dependency_overrides:
+  global_repository:
+    path: ../../../global_repository
+  signale:
+    git:
+      url: https://github.com/nightmare-space/signale
+  permission_handler: ^11.3.1
+  intl: 0.20.2
