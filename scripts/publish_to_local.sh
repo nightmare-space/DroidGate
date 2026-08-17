@@ -1,28 +1,24 @@
-./gradlew :droidgate-core:assembleRelease
-mvn install:install-file \
-  -Dfile=droidgate-core/build/outputs/aar/droidgate-core-release.aar \
-  -DgroupId=com.github.nightmare-space.DroidGate \
-  -DartifactId=droidgate-core \
-  -Dversion=1.0.0 \
-  -Dpackaging=aar
-./gradlew :droidgate-plugins:assembleRelease
-mvn install:install-file \
-  -Dfile=droidgate-plugins/build/outputs/aar/droidgate-plugins-release.aar \
-  -DgroupId=com.github.nightmare-space.DroidGate \
-  -DartifactId=droidgate-plugins \
-  -Dversion=1.0.0 \
-  -Dpackaging=aar
-./gradlew :droidgate-hidden-api:assembleRelease
-mvn install:install-file \
-  -Dfile=droidgate-hidden-api/build/outputs/aar/droidgate-hidden-api-release.aar \
-  -DgroupId=com.github.nightmare-space.DroidGate \
-  -DartifactId=droidgate-hidden-api \
-  -Dversion=1.0.0 \
-  -Dpackaging=aar
-./gradlew :droidgate-bundle:assembleRelease
-mvn install:install-file \
-  -Dfile=droidgate-bundle/build/outputs/aar/droidgate-bundle-release.aar \
-  -DgroupId=com.github.nightmare-space.DroidGate \
-  -DartifactId=droidgate-bundle \
-  -Dversion=1.0.0 \
-  -Dpackaging=aar
+#!/usr/bin/env bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VERSION="${1:-v1.0.0}"
+GRADLEW="$PROJECT_DIR/gradlew"
+
+if [[ ! -x "$GRADLEW" ]]; then
+    echo "DroidGate Gradle wrapper not found: $GRADLEW" >&2
+    echo "Usage: $0 [version]" >&2
+    exit 1
+fi
+
+"$GRADLEW" \
+    -p "$PROJECT_DIR" \
+    -PpublishVersion="$VERSION" \
+    :droidgate-hidden-api:publishReleasePublicationToMavenLocal \
+    :droidgate-core:publishReleasePublicationToMavenLocal \
+    :droidgate-plugins:publishReleasePublicationToMavenLocal \
+    :droidgate-bundle:publishReleasePublicationToMavenLocal
+
+echo "Published com.github.nightmare-space.DroidGate artifacts $VERSION to ~/.m2/repository."

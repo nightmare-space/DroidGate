@@ -8,13 +8,16 @@ buildscript {
     }
 }
 
+def droidGateVersion = findProperty('publishVersion') ?: 'v1.0.0'
+
 allprojects {
     repositories {
         google()
         maven { url "https://jitpack.io" }
         mavenCentral()
     }
-	group = 'com.github.nightmare-space'
+    group = 'com.github.nightmare-space.DroidGate'
+    version = droidGateVersion
 }
 
 task clean(type: Delete) {
