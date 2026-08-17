@@ -2,19 +2,23 @@ package com.nightmare.droidgate.plugins;
 
 import static fi.iki.elonen.NanoHTTPD.newFixedLengthResponse;
 
+import android.app.IActivityManager;
 import android.content.Context;
+import android.content.pm.IPackageManager;
 import android.os.IBinder;
+import android.os.IUserManager;
 import android.os.ServiceManager;
 
 import com.nightmare.droidgate.foundation.DroidGatePlugin;
+import com.nightmare.droidgate.helper.ReflectionHelper;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -33,26 +37,26 @@ public class UserManagerPlugin extends DroidGatePlugin {
     private static final long DEFAULT_WAIT_TIMEOUT_MS = 30_000L;
     private static final long MAX_WAIT_TIMEOUT_MS = 120_000L;
 
-    private final Class<?> userManagerInterface;
-    private final Object userManager;
+    private final IUserManager userManager;
     private final Throwable initializationError;
+    private IActivityManager activityManager;
+    private IPackageManager packageManager;
 
     public UserManagerPlugin() {
-        Class<?> resolvedInterface = null;
-        Object resolvedManager = null;
+        IUserManager resolvedManager = null;
         Throwable error = null;
         try {
             IBinder binder = ServiceManager.getService(Context.USER_SERVICE);
             if (binder == null) {
                 throw new IllegalStateException("UserManager binder is unavailable");
             }
-            Class<?> stubClass = Class.forName("android.os.IUserManager$Stub");
-            resolvedInterface = Class.forName("android.os.IUserManager");
-            resolvedManager = stubClass.getMethod("asInterface", IBinder.class).invoke(null, binder);
+            resolvedManager = IUserManager.Stub.asInterface(binder);
+            if (resolvedManager == null) {
+                throw new IllegalStateException("IUserManager is unavailable");
+            }
         } catch (Throwable throwable) {
             error = unwrap(throwable);
         }
-        userManagerInterface = resolvedInterface;
         userManager = resolvedManager;
         initializationError = error;
     }
@@ -68,7 +72,12 @@ public class UserManagerPlugin extends DroidGatePlugin {
             return errorResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, "initialization_failed", initializationError);
         }
 
-        Map<String, String> params = session.getParms();
+        Map<String, String> params;
+        try {
+            params = getRequestParams(session);
+        } catch (Throwable throwable) {
+            return errorResponse(NanoHTTPD.Response.Status.BAD_REQUEST, "invalid_request_body", unwrap(throwable));
+        }
         String action = params.get("action");
         if (action == null || action.isEmpty()) {
             return errorResponse(NanoHTTPD.Response.Status.BAD_REQUEST, "missing action", null);
@@ -82,10 +91,14 @@ public class UserManagerPlugin extends DroidGatePlugin {
                     return createProfile(params);
                 case "pre_create_user":
                     return preCreateUser(params);
-                case "remove_clone_profile":
-                    return removeCloneProfile(params);
-                case "stop_clone_profile":
-                    return stopCloneProfile(params);
+                case "remove_profile":
+                    return removeProfile(params);
+                case "start_profile":
+                    return startProfile(params);
+                case "stop_profile":
+                    return stopProfile(params);
+                case "install_existing_package":
+                    return installExistingPackage(params);
                 case "get_user":
                     return getUser(params);
                 case "get_users":
@@ -100,9 +113,51 @@ public class UserManagerPlugin extends DroidGatePlugin {
         }
     }
 
+    private Map<String, String> getRequestParams(NanoHTTPD.IHTTPSession session) throws Exception {
+        if (session.getMethod() != NanoHTTPD.Method.POST) {
+            return session.getParms();
+        }
+
+        Map<String, String> files = new HashMap<>();
+        session.parseBody(files);
+        Map<String, String> params = new HashMap<>(session.getParms());
+        String contentType = session.getHeaders().get("content-type");
+        if (contentType == null || !contentType.split(";", 2)[0].trim().equalsIgnoreCase("application/json")) {
+            return params;
+        }
+
+        String body = files.get("postData");
+        if (body == null || body.trim().isEmpty()) {
+            throw new IllegalArgumentException("empty JSON body");
+        }
+        JSONObject json = new JSONObject(body);
+        Iterator<String> keys = json.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = json.get(key);
+            if (value == JSONObject.NULL) {
+                continue;
+            }
+            if (value instanceof JSONArray) {
+                JSONArray array = (JSONArray) value;
+                StringBuilder joined = new StringBuilder();
+                for (int i = 0; i < array.length(); i++) {
+                    if (i > 0) {
+                        joined.append(',');
+                    }
+                    joined.append(array.getString(i));
+                }
+                params.put(key, joined.toString());
+            } else {
+                params.put(key, String.valueOf(value));
+            }
+        }
+        return params;
+    }
+
     private NanoHTTPD.Response createUser(Map<String, String> params) throws Throwable {
         String name = require(params, "name");
-        String userType = params.get("userType");
+        String userType = params.get("user_type");
         if (userType == null || userType.isEmpty()) {
             userType = "android.os.usertype.full.SECONDARY";
         }
@@ -120,14 +175,14 @@ public class UserManagerPlugin extends DroidGatePlugin {
 
     private NanoHTTPD.Response createProfile(Map<String, String> params) throws Throwable {
         String name = require(params, "name");
-        String userType = params.get("userType");
+        String userType = params.get("user_type");
         if (userType == null || userType.isEmpty()) {
             userType = CLONE_PROFILE_TYPE;
         }
         int flags = parseFlags(params.get("flags"));
-        int parentUserId = parseRequiredInt(params, "parentUserId");
-        String[] disallowedPackages = parseStringList(params.get("disallowedPackages"));
-        boolean evenWhenDisallowed = parseBoolean(params.get("evenWhenDisallowed"), false);
+        int parentUserId = parseRequiredInt(params, "parent_user_id");
+        String[] disallowedPackages = parseStringList(params.get("disallowed_packages"));
+        boolean evenWhenDisallowed = parseBoolean(params.get("even_when_disallowed"), false);
         String methodName = evenWhenDisallowed
                 ? "createProfileForUserEvenWhenDisallowedWithThrow"
                 : "createProfileForUserWithThrow";
@@ -145,16 +200,16 @@ public class UserManagerPlugin extends DroidGatePlugin {
     }
 
     private NanoHTTPD.Response preCreateUser(Map<String, String> params) throws Throwable {
-        String userType = require(params, "userType");
+        String userType = require(params, "user_type");
         Object userInfo = invoke("preCreateUserWithThrow", new Class<?>[]{String.class}, userType);
         return userResult("pre_create_user", userInfo);
     }
 
-    private NanoHTTPD.Response removeCloneProfile(Map<String, String> params) throws Throwable {
-        int userId = parseRequiredInt(params, "userId");
-        int confirmUserId = parseRequiredInt(params, "confirmUserId");
+    private NanoHTTPD.Response removeProfile(Map<String, String> params) throws Throwable {
+        int userId = parseRequiredInt(params, "user_id");
+        int confirmUserId = parseRequiredInt(params, "confirm_user_id");
         if (userId != confirmUserId) {
-            throw new IllegalArgumentException("confirmUserId must equal userId");
+            throw new IllegalArgumentException("confirm_user_id must equal user_id");
         }
         if (userId == 0) {
             throw new IllegalArgumentException("system user 0 cannot be removed");
@@ -165,8 +220,8 @@ public class UserManagerPlugin extends DroidGatePlugin {
             throw new IllegalArgumentException("user does not exist: " + userId);
         }
         String userType = String.valueOf(readField(userInfo, "userType"));
-        if (!CLONE_PROFILE_TYPE.equals(userType)) {
-            throw new IllegalArgumentException("refusing to remove non-clone user " + userId + " of type " + userType);
+        if (!userType.startsWith("android.os.usertype.profile.")) {
+            throw new IllegalArgumentException("refusing to remove non-profile user " + userId + " of type " + userType);
         }
 
         String mode = params.get("mode");
@@ -175,15 +230,15 @@ public class UserManagerPlugin extends DroidGatePlugin {
         }
 
         JSONObject json = new JSONObject();
-        json.put("action", "remove_clone_profile");
-        json.put("userId", userId);
+        json.put("action", "remove_profile");
+        json.put("user_id", userId);
         json.put("mode", mode);
-        json.put("userBeforeRemoval", userInfoToJson(userInfo));
+        json.put("user_before_removal", userInfoToJson(userInfo));
 
         boolean accepted;
         if ("normal".equals(mode)) {
             accepted = (Boolean) invoke("removeUser", new Class<?>[]{int.class}, userId);
-            json.put("binderResult", accepted);
+            json.put("binder_result", accepted);
         } else if ("when_possible".equals(mode)) {
             int result = (Integer) invoke(
                     "removeUserWhenPossible",
@@ -192,8 +247,8 @@ public class UserManagerPlugin extends DroidGatePlugin {
                     false
             );
             accepted = result == 0 || result == 1 || result == 2;
-            json.put("binderResult", result);
-            json.put("overrideDevicePolicy", false);
+            json.put("binder_result", result);
+            json.put("override_device_policy", false);
         } else {
             throw new IllegalArgumentException("unknown remove mode: " + mode);
         }
@@ -202,10 +257,10 @@ public class UserManagerPlugin extends DroidGatePlugin {
         json.put("accepted", accepted);
         json.put("wait", wait);
         if (accepted && wait) {
-            long timeoutMs = parseLong(params.get("timeoutMs"), DEFAULT_WAIT_TIMEOUT_MS);
+            long timeoutMs = parseLong(params.get("timeout_ms"), DEFAULT_WAIT_TIMEOUT_MS);
             timeoutMs = Math.max(0L, Math.min(timeoutMs, MAX_WAIT_TIMEOUT_MS));
             json.put("removed", waitUntilRemoved(userId, timeoutMs));
-            json.put("timeoutMs", timeoutMs);
+            json.put("timeout_ms", timeoutMs);
         } else {
             json.put("removed", getUserInfo(userId) == null);
         }
@@ -213,8 +268,47 @@ public class UserManagerPlugin extends DroidGatePlugin {
         return jsonResponse(NanoHTTPD.Response.Status.OK, json);
     }
 
-    private NanoHTTPD.Response stopCloneProfile(Map<String, String> params) throws Throwable {
-        int userId = parseRequiredInt(params, "userId");
+    private NanoHTTPD.Response startProfile(Map<String, String> params) throws Throwable {
+        int userId = parseRequiredInt(params, "user_id");
+        if (userId == 0) {
+            throw new IllegalArgumentException("system user 0 is not a profile");
+        }
+
+        Object userInfo = getUserInfo(userId);
+        if (userInfo == null) {
+            throw new IllegalArgumentException("user does not exist: " + userId);
+        }
+        String userType = String.valueOf(readField(userInfo, "userType"));
+        if (!userType.startsWith("android.os.usertype.profile.")) {
+            throw new IllegalArgumentException("refusing to start non-profile user " + userId + " of type " + userType);
+        }
+
+        IActivityManager activityManager = getActivityManager();
+
+        boolean binderResult;
+        try {
+            binderResult = ReflectionHelper.invokeMethodWithParam(
+                    IActivityManager.class,
+                    activityManager,
+                    "startProfile",
+                    new Class<?>[]{int.class},
+                    userId
+            );
+        } catch (InvocationTargetException exception) {
+            throw unwrap(exception);
+        }
+
+        JSONObject json = new JSONObject();
+        json.put("success", binderResult);
+        json.put("action", "start_profile");
+        json.put("user_id", userId);
+        json.put("binder_result", binderResult);
+        json.put("user", userInfoToJson(userInfo));
+        return jsonResponse(NanoHTTPD.Response.Status.OK, json);
+    }
+
+    private NanoHTTPD.Response stopProfile(Map<String, String> params) throws Throwable {
+        int userId = parseRequiredInt(params, "user_id");
         if (userId == 0) {
             throw new IllegalArgumentException("system user 0 cannot be stopped");
         }
@@ -224,51 +318,86 @@ public class UserManagerPlugin extends DroidGatePlugin {
             throw new IllegalArgumentException("user does not exist: " + userId);
         }
         String userType = String.valueOf(readField(userInfo, "userType"));
-        if (!CLONE_PROFILE_TYPE.equals(userType)) {
-            throw new IllegalArgumentException("refusing to stop non-clone user " + userId + " of type " + userType);
+        if (!userType.startsWith("android.os.usertype.profile.")) {
+            throw new IllegalArgumentException("refusing to stop non-profile user " + userId + " of type " + userType);
         }
 
-        IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
-        if (binder == null) {
-            throw new IllegalStateException("ActivityManager binder is unavailable");
-        }
-        Class<?> stubClass = Class.forName("android.app.IActivityManager$Stub");
-        Class<?> activityManagerInterface = Class.forName("android.app.IActivityManager");
-        Object activityManager = stubClass.getMethod("asInterface", IBinder.class).invoke(null, binder);
+        IActivityManager activityManager = getActivityManager();
 
         Object binderResult;
         try {
-            Method method = activityManagerInterface.getMethod("stopProfile", int.class);
-            binderResult = method.invoke(activityManager, userId);
+            binderResult = ReflectionHelper.invokeMethodWithParam(
+                    IActivityManager.class,
+                    activityManager,
+                    "stopProfile",
+                    new Class<?>[]{int.class},
+                    userId
+            );
         } catch (InvocationTargetException exception) {
             throw unwrap(exception);
         }
 
         JSONObject json = new JSONObject();
-        json.put("success", true);
-        json.put("action", "stop_clone_profile");
-        json.put("userId", userId);
-        json.put("binderResult", binderResult == null ? JSONObject.NULL : binderResult);
+        boolean success = !(binderResult instanceof Boolean) || (Boolean) binderResult;
+        json.put("success", success);
+        json.put("action", "stop_profile");
+        json.put("user_id", userId);
+        json.put("binder_result", binderResult == null ? JSONObject.NULL : binderResult);
         json.put("user", userInfoToJson(userInfo));
         return jsonResponse(NanoHTTPD.Response.Status.OK, json);
     }
 
+    private NanoHTTPD.Response installExistingPackage(Map<String, String> params) throws Throwable {
+        String packageName = require(params, "package_name");
+        int userId = parseRequiredInt(params, "user_id");
+        if (getUserInfo(userId) == null) {
+            throw new IllegalArgumentException("user does not exist: " + userId);
+        }
+
+        IPackageManager packageManager = getPackageManager();
+
+        int result;
+        try {
+            result = ReflectionHelper.invokeMethodWithParam(
+                    IPackageManager.class,
+                    packageManager,
+                    "installExistingPackageAsUser",
+                    new Class<?>[]{String.class, int.class, int.class, int.class, List.class},
+                    packageName,
+                    userId,
+                    0x00400000,
+                    0,
+                    null
+            );
+        } catch (InvocationTargetException exception) {
+            throw unwrap(exception);
+        }
+
+        JSONObject json = new JSONObject();
+        json.put("success", result == 1);
+        json.put("action", "install_existing_package");
+        json.put("package_name", packageName);
+        json.put("user_id", userId);
+        json.put("result", result);
+        return jsonResponse(NanoHTTPD.Response.Status.OK, json);
+    }
+
     private NanoHTTPD.Response getUser(Map<String, String> params) throws Throwable {
-        int userId = parseRequiredInt(params, "userId");
+        int userId = parseRequiredInt(params, "user_id");
         Object userInfo = getUserInfo(userId);
         JSONObject json = new JSONObject();
         json.put("success", true);
         json.put("action", "get_user");
-        json.put("userId", userId);
+        json.put("user_id", userId);
         json.put("exists", userInfo != null);
         json.put("user", userInfo == null ? JSONObject.NULL : userInfoToJson(userInfo));
         return jsonResponse(NanoHTTPD.Response.Status.OK, json);
     }
 
     private NanoHTTPD.Response getUsers(Map<String, String> params) throws Throwable {
-        boolean excludePartial = parseBoolean(params.get("excludePartial"), true);
-        boolean excludeDying = parseBoolean(params.get("excludeDying"), false);
-        boolean excludePreCreated = parseBoolean(params.get("excludePreCreated"), true);
+        boolean excludePartial = parseBoolean(params.get("exclude_partial"), true);
+        boolean excludeDying = parseBoolean(params.get("exclude_dying"), false);
+        boolean excludePreCreated = parseBoolean(params.get("exclude_pre_created"), true);
         Object result = invoke(
                 "getUsers",
                 new Class<?>[]{boolean.class, boolean.class, boolean.class},
@@ -281,7 +410,9 @@ public class UserManagerPlugin extends DroidGatePlugin {
         if (result instanceof List) {
             for (Object userInfo : (List<?>) result) {
                 if (userInfo != null) {
-                    users.put(userInfoToJson(userInfo));
+                    JSONObject user = userInfoToJson(userInfo);
+                    user.put("running", isUserRunning((Integer) readField(userInfo, "id")));
+                    users.put(user);
                 }
             }
         }
@@ -289,12 +420,56 @@ public class UserManagerPlugin extends DroidGatePlugin {
         JSONObject json = new JSONObject();
         json.put("success", true);
         json.put("action", "get_users");
-        json.put("excludePartial", excludePartial);
-        json.put("excludeDying", excludeDying);
-        json.put("excludePreCreated", excludePreCreated);
+        json.put("exclude_partial", excludePartial);
+        json.put("exclude_dying", excludeDying);
+        json.put("exclude_pre_created", excludePreCreated);
         json.put("count", users.length());
         json.put("users", users);
         return jsonResponse(NanoHTTPD.Response.Status.OK, json);
+    }
+
+    private boolean isUserRunning(int userId) throws Throwable {
+        IActivityManager activityManager = getActivityManager();
+        try {
+            return ReflectionHelper.invokeMethodWithParam(
+                    IActivityManager.class,
+                    activityManager,
+                    "isUserRunning",
+                    new Class<?>[]{int.class, int.class},
+                    userId,
+                    0
+            );
+        } catch (InvocationTargetException exception) {
+            throw unwrap(exception);
+        }
+    }
+
+    private IActivityManager getActivityManager() {
+        if (activityManager == null) {
+            IBinder binder = ServiceManager.getService(Context.ACTIVITY_SERVICE);
+            if (binder == null) {
+                throw new IllegalStateException("ActivityManager binder is unavailable");
+            }
+            activityManager = IActivityManager.Stub.asInterface(binder);
+            if (activityManager == null) {
+                throw new IllegalStateException("IActivityManager is unavailable");
+            }
+        }
+        return activityManager;
+    }
+
+    private IPackageManager getPackageManager() {
+        if (packageManager == null) {
+            IBinder binder = ServiceManager.getService("package");
+            if (binder == null) {
+                throw new IllegalStateException("PackageManager binder is unavailable");
+            }
+            packageManager = IPackageManager.Stub.asInterface(binder);
+            if (packageManager == null) {
+                throw new IllegalStateException("IPackageManager is unavailable");
+            }
+        }
+        return packageManager;
     }
 
     private NanoHTTPD.Response userResult(String action, Object userInfo) throws Exception {
@@ -322,8 +497,13 @@ public class UserManagerPlugin extends DroidGatePlugin {
 
     private Object invoke(String methodName, Class<?>[] parameterTypes, Object... args) throws Throwable {
         try {
-            Method method = userManagerInterface.getMethod(methodName, parameterTypes);
-            return method.invoke(userManager, args);
+            return ReflectionHelper.invokeMethodWithParam(
+                    IUserManager.class,
+                    userManager,
+                    methodName,
+                    parameterTypes,
+                    args
+            );
         } catch (InvocationTargetException exception) {
             throw unwrap(exception);
         }
@@ -334,17 +514,16 @@ public class UserManagerPlugin extends DroidGatePlugin {
         json.put("id", readField(userInfo, "id"));
         json.put("name", nullable(readField(userInfo, "name")));
         json.put("flags", readField(userInfo, "flags"));
-        json.put("userType", nullable(readField(userInfo, "userType")));
-        json.put("serialNumber", readField(userInfo, "serialNumber"));
-        json.put("profileGroupId", readField(userInfo, "profileGroupId"));
+        json.put("user_type", nullable(readField(userInfo, "userType")));
+        json.put("serial_number", readField(userInfo, "serialNumber"));
+        json.put("profile_group_id", readField(userInfo, "profileGroupId"));
         json.put("partial", readField(userInfo, "partial"));
-        json.put("preCreated", readField(userInfo, "preCreated"));
+        json.put("pre_created", readField(userInfo, "preCreated"));
         return json;
     }
 
     private static Object readField(Object target, String fieldName) throws Exception {
-        Field field = target.getClass().getField(fieldName);
-        return field.get(target);
+        return ReflectionHelper.getField(target, fieldName);
     }
 
     private static Object nullable(Object value) {

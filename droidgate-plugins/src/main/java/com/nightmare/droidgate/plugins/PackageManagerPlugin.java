@@ -219,7 +219,9 @@ public class PackageManagerPlugin extends DroidGatePlugin {
             case "get_all_app_info":
                 String line = session.getParms().get("is_system_app");
                 boolean isSystemApp = Boolean.parseBoolean(line);
-                String apps = getAllAppInfo(isSystemApp);
+                String userIdParam = session.getParms().get("user_id");
+                Integer userId = userIdParam == null || userIdParam.isEmpty() ? null : Integer.parseInt(userIdParam);
+                String apps = getAllAppInfo(isSystemApp, userId);
                 return newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", apps);
             case "app_main_activity": {
                 String packageName = session.getParms().get("package");
@@ -314,10 +316,23 @@ public class PackageManagerPlugin extends DroidGatePlugin {
     }
 
 
-    public String getAllAppInfo(boolean getSystemApp) {
+    public String getAllAppInfo(boolean getSystemApp, Integer targetUserId) {
         JSONObject jsonObjectResult = new JSONObject();
         JSONArray jsonArray = new JSONArray();
         try {
+            if (targetUserId != null) {
+                try {
+                    Method method = PackageManager.class.getMethod("getInstalledPackagesAsUser", int.class, int.class);
+                    @SuppressWarnings("unchecked")
+                    List<PackageInfo> packageInfos = (List<PackageInfo>) method.invoke(pm, 0, targetUserId);
+                    processPackageInfos(packageInfos, jsonArray, getSystemApp);
+                    jsonObjectResult.put("datas", jsonArray);
+                    return jsonObjectResult.toString();
+                } catch (ReflectiveOperationException exception) {
+                    throw new RuntimeException("获取用户 " + targetUserId + " 的应用列表失败", exception);
+                }
+            }
+
             // 获取当前用户的应用
             @SuppressLint("QueryPermissionsNeeded")
             List<PackageInfo> packageInfos = pm.getInstalledPackages(PackageManager.GET_UNINSTALLED_PACKAGES);
