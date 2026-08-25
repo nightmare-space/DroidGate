@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.nightmare.droidgate.plugins'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 21
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation project(':droidgate-core')
+    compileOnly project(':droidgate-hidden-api')
+}
+
+apply from: rootProject.file('publishing.gradle')

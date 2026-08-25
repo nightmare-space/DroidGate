@@ -1,0 +1,135 @@
+package com.nightmare.droidgate;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.ddm.DdmHandleAppName;
+import android.hardware.display.DisplayManager;
+import android.net.wifi.WifiManager;
+import android.os.Binder;
+import android.os.Build;
+import android.os.SystemProperties;
+import android.os.UserHandle;
+import android.view.Display;
+
+import com.nightmare.droidgate.foundation.DroidGatePlugin;
+import com.nightmare.droidgate.foundation.FakeContext;
+import com.nightmare.droidgate.foundation.Workarounds;
+import com.nightmare.droidgate.helper.L;
+import com.nightmare.droidgate.helper.ReflectionHelper;
+import com.nightmare.droidgate.helper.ReflectionPrinter;
+import com.nightmare.droidgate.helper.ServerHelper;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+
+import android.os.Process;
+
+public class DroidGateServer {
+    public DroidGateServer() {
+    }
+
+    @SuppressLint("SdCardPath")
+    static public String portDirectory = "/sdcard";
+    List<DroidGatePlugin> plugins = new ArrayList<>();
+
+    public void registerPlugin(DroidGatePlugin handler) {
+        plugins.add(handler);
+        L.d("add handler -> " + handler);
+    }
+
+    private static final String VERSION = "1.0.0";
+
+    public DroidGateHttpServer httpServer;
+
+    /**
+     * usually cmd is 'adb shell app_process *'
+     */
+    @SuppressLint("SdCardPath")
+    public void startServerForShell(String[] args) {
+        L.d("Welcome!!!" + Build.TYPE);
+        L.d("args -> " + Arrays.toString(args));
+        DdmHandleAppName.setAppName("DroidGate", 0);
+        httpServer = ServerHelper.safeGetServerForShell();
+        httpServer.setDroidGateServer(this);
+        L.d("DroidGate server starting (version: " + VERSION + ")");
+        int uid = Process.myUid();
+        L.d("uid -> " + uid);
+        Workarounds.apply();
+        ContextStore.getInstance().setEmbededMode(false);
+        ContextStore.getInstance().setContext(FakeContext.get());
+        // 获取安卓版本
+        int sdk = Build.VERSION.SDK_INT;
+        String release = Build.VERSION.RELEASE;
+        L.d("Info: Android " + release + "(" + sdk + ")");
+        L.d("info: uid -> " + uid);
+        // 获取设备制造商，例如 "Samsung"
+        String manufacturer = Build.MANUFACTURER;
+        // 获取设备型号，例如 "Galaxy S10"
+        String model = getMarketName();
+        if (model.isEmpty()) {
+            model = Build.MODEL;
+        }
+        String deviceInfo = "Info: " + manufacturer + "(" + model + ")";
+        L.d(deviceInfo);
+        writePort(portDirectory, httpServer.getListeningPort());
+        // 让进程等待,现在由调用方执行 Looper.loop();
+        // 不能用 System.in.read()
+        // System.in.read() 需要宿主进程由标准终端调用
+        // Process.run 等方法就会出现异常
+    }
+
+    public static String getMarketName() {
+        return SystemProperties.get("ro.product.marketname");
+    }
+
+    /**
+     * 与直接启动dex不同，从 Activity 中启动不用反射 context 上下文
+     * 但是一些权限需要动态申请
+     * different from start dex directly, start from Activity doesn't need to reflect context
+     *
+     * @param context: Context
+     */
+    public int startServerFromActivity(Context context) {
+        String dataPath = context.getFilesDir().getPath();
+        L.enableTerminalLog = false;
+        L.serverLogPath = dataPath + "/droidgate_server_log";
+        portDirectory = dataPath;
+        String portPath = context.getFilesDir().getPath();
+        ContextStore.getInstance().setEmbededMode(true);
+        ContextStore.getInstance().setContext(context);
+        DroidGateHttpServer server = ServerHelper.safeGetServerForActivity();
+        server.setDroidGateServer(this);
+        writePort(portPath, server.getListeningPort());
+        L.d("port path:" + portPath);
+        L.d("success start:" + server.getListeningPort());
+        return server.getListeningPort();
+    }
+
+    /**
+     * 写入端口号，方便不同进程同App，获得这个端口号
+     *
+     * @param path: 写入的路径
+     * @param port: 端口号
+     * @noinspection CallToPrintStackTrace
+     */
+    public static void writePort(String path, int port) {
+        OutputStream out;
+        try {
+            String filePath = path + "/server_port";
+            out = new FileOutputStream(filePath);
+            L.d("port file path -> " + filePath);
+            out.write((port + "").getBytes());
+            out.close();
+        } catch (IOException e) {
+            // noinspection CallToPrintStackTrace
+            e.printStackTrace();
+        }
+    }
+
+}
